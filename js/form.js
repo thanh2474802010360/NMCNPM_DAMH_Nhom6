@@ -1,4 +1,4 @@
-/* js/form.js – Form tạo mới & chỉnh sửa cuộc họp */
+``/* js/form.js – Form tạo mới & chỉnh sửa cuộc họp */
 
 /* State cục bộ của form */
 let formParticipants = [];   // [{name, status}]
@@ -40,13 +40,23 @@ function viewForm(editId) {
 
           <!-- Người tổ chức -->
           <div class="panel">
-            <h3>👤 Người tạo cuộc họp &amp; Chủ trì</h3>
+            <h3>👤 Người tổ chức &amp; Chủ trì</h3>
             <div class="field-row">
               <div class="field">
-                <label>Người tạo cuộc họp</label>
+                <label>Người tổ chức</label>
                 <div class="organizer" style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;background:#f9fafb;">
-                  <div class="av">${initials(CURRENT_USER.name)}</div>
-                  ${escapeHtml(CURRENT_USER.name)} (Tôi)
+                  
+                  <input
+                    id="f_organizer"
+                    type="text"
+                    value="${escapeHtml(CURRENT_USER.name)}"
+                    style="
+                      flex:1;
+                      border:none;
+                      outline:none;
+                      background:transparent;
+                      font-size:15px;
+          ">  
                 </div>
               </div>
               <div class="field">
@@ -189,7 +199,7 @@ function viewForm(editId) {
             </div>
             <div class="sum-item">
               <div class="ic">👤</div>
-              <div><div class="lbl">Người tạo cuộc họp / Chủ trì</div><div class="val" id="sumHost">—</div></div>
+              <div><div class="lbl">Người tổ chức / Chủ trì</div><div class="val" id="sumHost">—</div></div>
             </div>
             <div class="sum-item">
               <div class="ic">📍</div>
