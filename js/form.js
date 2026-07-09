@@ -18,6 +18,197 @@ const REPEAT_OPTIONS = [
   { v: "monthly", l: "Hàng tháng" },
 ];
 
+/* ── Date/Time helpers ─────────────────────────────── */
+
+const MEETING_TIME_OPTIONS = makeTimeOptions(0, 23, 30);
+// 0-23 giờ, mỗi 30 phút. Muốn mỗi 15 phút thì đổi 30 thành 15.
+
+function makeTimeOptions(startHour = 0, endHour = 23, stepMinutes = 30) {
+  const arr = [];
+  const start = startHour * 60;
+  const end = endHour * 60 + 59;
+
+  for (let total = start; total <= end && total < 24 * 60; total += stepMinutes) {
+    const h = String(Math.floor(total / 60)).padStart(2, "0");
+    const m = String(total % 60).padStart(2, "0");
+    arr.push(`${h}:${m}`);
+  }
+
+  return arr;
+}
+
+function normalizeTime(value) {
+  const s = String(value || "").trim();
+
+  // Cho phép nhập: 9:00, 09:00, 9.00, 9h00
+  const m = s.match(/^(\d{1,2})(?::|\.|h)(\d{2})$/i);
+  if (!m) return "";
+
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+
+  if (h < 0 || h > 23 || mi < 0 || mi > 59) return "";
+
+  return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+}
+
+function timePickerHtml(id, selected = "09:00") {
+  const safeSelected = normalizeTime(selected) || selected || "";
+
+  return `
+    <div class="time-combo" data-time-combo="${id}" style="position:relative;display:flex;align-items:stretch;width:100%;">
+      <input
+        type="text"
+        id="${id}"
+        inputmode="numeric"
+        placeholder="HH:mm"
+        autocomplete="off"
+        value="${escapeHtml(safeSelected)}"
+        style="flex:1;border-top-right-radius:0;border-bottom-right-radius:0;"
+      >
+      <button
+        type="button"
+        class="time-picker-btn"
+        data-target="${id}"
+        title="Chọn giờ"
+        style="width:44px;border:1px solid var(--border);border-left:0;border-radius:0 9px 9px 0;background:#fff;cursor:pointer;font-size:16px;"
+      >▼</button>
+      <div
+        class="time-picker-menu hidden"
+        id="${id}_menu"
+        style="position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:9999;max-height:220px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 24px rgba(15,23,42,.16);padding:6px;"
+      ></div>
+    </div>
+  `;
+}
+
+function renderTimeMenu(id, keyword = "") {
+  const menu = document.getElementById(`${id}_menu`);
+  const input = document.getElementById(id);
+  if (!menu || !input) return;
+
+  const q = String(keyword || "").trim().toLowerCase();
+  const options = MEETING_TIME_OPTIONS.filter((t) => !q || t.includes(q));
+  const current = normalizeTime(input.value || "");
+
+  menu.innerHTML = options.length
+    ? options.map((t) => `
+        <div
+          class="time-option ${t === current ? "selected" : ""}"
+          data-time="${t}"
+          style="padding:9px 12px;border-radius:8px;cursor:pointer;font-size:15px;${t === current ? "background:#eef2ff;font-weight:600;" : ""}"
+        >${t}</div>
+      `).join("")
+    : `<div style="padding:9px 12px;color:var(--muted);font-size:14px;">Không có giờ phù hợp</div>`;
+
+  menu.querySelectorAll(".time-option[data-time]").forEach((item) => {
+    item.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+
+      input.value = item.dataset.time;
+
+      menu.classList.add("hidden");
+      clearFieldErr(id);
+      updateSummary();
+      checkConflict();
+    });
+  });
+}
+
+function closeAllTimeMenus(exceptId = null) {
+  document.querySelectorAll(".time-picker-menu").forEach((menu) => {
+    if (!exceptId || menu.id !== `${exceptId}_menu`) {
+      menu.classList.add("hidden");
+    }
+  });
+}
+
+function initCustomTimePicker(id) {
+  const input = document.getElementById(id);
+  const btn = document.querySelector(`.time-picker-btn[data-target="${id}"]`);
+  const menu = document.getElementById(`${id}_menu`);
+
+  if (!input || !btn || !menu) return;
+
+  const openMenu = () => {
+    closeAllTimeMenus(id);
+    renderTimeMenu(id, "");
+    menu.classList.remove("hidden");
+  };
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (menu.classList.contains("hidden")) {
+      openMenu();
+      input.focus();
+    } else {
+      menu.classList.add("hidden");
+    }
+  });
+
+  // Bấm vào ô input cũng xổ toàn bộ danh sách giờ.
+  input.addEventListener("focus", () => {
+    renderTimeMenu(id, "");
+    menu.classList.remove("hidden");
+  });
+
+  // Khi gõ thì lọc giờ theo nội dung đang nhập.
+  input.addEventListener("input", () => {
+    renderTimeMenu(id, input.value);
+  });
+
+  input.addEventListener("blur", () => {
+    const t = normalizeTime(input.value);
+
+    if (t) {
+      input.value = t;
+    }
+
+    updateSummary();
+    checkConflict();
+  });
+}
+
+function isoToVNDate(value) {
+  if (!value) return "";
+
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return value;
+
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function vnDateToISO(value) {
+  const s = String(value || "").trim();
+
+  // Cho phép sẵn dạng yyyy-mm-dd để tương thích dữ liệu cũ.
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return s;
+
+  // Nhập dạng dd/mm/yyyy hoặc dd-mm-yyyy hoặc dd.mm.yyyy.
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (!m) return "";
+
+  const d = m[1].padStart(2, "0");
+  const mo = m[2].padStart(2, "0");
+  const y = m[3];
+
+  const dt = new Date(`${y}-${mo}-${d}T00:00:00`);
+
+  if (
+    Number.isNaN(dt.getTime()) ||
+    dt.getFullYear() !== Number(y) ||
+    dt.getMonth() + 1 !== Number(mo) ||
+    dt.getDate() !== Number(d)
+  ) {
+    return "";
+  }
+
+  return `${y}-${mo}-${d}`;
+}
+
 /* ── HTML form ───────────────────────────────────── */
 function viewForm(editId) {
   const m = editId ? getMeeting(editId) : null;
@@ -97,9 +288,34 @@ function viewForm(editId) {
             <div class="field-row">
               <div class="field" id="field_date">
                 <label>Ngày họp <span class="req">*</span></label>
-                <input type="date" id="f_date" value="${m ? m.date : todayStr(1)}">
-                <div class="err hidden">Không được chọn ngày trong quá khứ</div>
+
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <input
+                    type="text"
+                    id="f_date"
+                    inputmode="numeric"
+                    placeholder="dd/mm/yyyy"
+                    value="${m ? isoToVNDate(m.date) : isoToVNDate(todayStr(1))}"
+                    style="flex:1;"
+                  >
+                  <button
+                    type="button"
+                    id="btnPickDate"
+                    class="btn"
+                    title="Chọn ngày"
+                    style="height:38px;padding:0 12px;"
+                  >📅</button>
+                  <input
+                    type="date"
+                    id="f_date_picker"
+                    value="${m ? m.date : todayStr(1)}"
+                    style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;"
+                  >
+                </div>
+
+                <div class="err hidden">Ngày phải đúng định dạng dd/mm/yyyy và không được trong quá khứ</div>
               </div>
+
               <div class="field">
                 <label>Múi giờ</label>
                 <select id="f_timezone">
@@ -107,17 +323,21 @@ function viewForm(editId) {
                 </select>
               </div>
             </div>
+
             <div class="field-row">
               <div class="field" id="field_start">
                 <label>Bắt đầu <span class="req">*</span></label>
-                <input type="time" id="f_start" value="${m ? m.startTime : "09:00"}">
+                ${timePickerHtml("f_start", m ? m.startTime : "09:00")}
+                <div class="err hidden">Giờ bắt đầu phải đúng định dạng HH:mm</div>
               </div>
+
               <div class="field" id="field_end">
                 <label>Kết thúc <span class="req">*</span></label>
-                <input type="time" id="f_end" value="${m ? m.endTime : "10:00"}">
-                <div class="err hidden">Thời gian kết thúc phải sau thời gian bắt đầu</div>
+                ${timePickerHtml("f_end", m ? m.endTime : "10:00")}
+                <div class="err hidden">Giờ kết thúc phải đúng định dạng HH:mm và sau giờ bắt đầu</div>
               </div>
             </div>
+
             <div class="field-row">
               <div class="field">
                 <label>Lặp lại</label>
@@ -273,6 +493,57 @@ function initForm(editId) {
     el.addEventListener("input",  () => { updateSummary(); checkConflict(); clearFieldErr(id); });
     el.addEventListener("change", () => { updateSummary(); checkConflict(); clearFieldErr(id); });
   });
+
+  // Tự chuẩn hóa ngày về dd/mm/yyyy khi nhập xong.
+  document.getElementById("f_date").addEventListener("blur", (e) => {
+    const iso = vnDateToISO(e.target.value);
+
+    if (iso) {
+      e.target.value = isoToVNDate(iso);
+    }
+
+    updateSummary();
+    checkConflict();
+  });
+
+  // Nút chọn ngày: vừa cho gõ, vừa cho chọn bằng lịch.
+  const dateInput = document.getElementById("f_date");
+  const datePicker = document.getElementById("f_date_picker");
+  const btnPickDate = document.getElementById("btnPickDate");
+
+  btnPickDate.addEventListener("click", () => {
+    const iso = vnDateToISO(dateInput.value);
+
+    if (iso) {
+      datePicker.value = iso;
+    }
+
+    if (datePicker.showPicker) {
+      datePicker.showPicker();
+    } else {
+      datePicker.click();
+    }
+  });
+
+  datePicker.addEventListener("change", () => {
+    if (datePicker.value) {
+      dateInput.value = isoToVNDate(datePicker.value);
+      clearFieldErr("f_date");
+      updateSummary();
+      checkConflict();
+    }
+  });
+
+  // Giờ bắt đầu/kết thúc: vừa gõ được, vừa bấm ▼ để chọn giờ.
+  initCustomTimePicker("f_start");
+  initCustomTimePicker("f_end");
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".time-combo")) {
+      closeAllTimeMenus();
+    }
+  });
+
   document.querySelectorAll('input[name="f_format"]').forEach((r) =>
     r.addEventListener("change", updateSummary)
   );
@@ -322,9 +593,9 @@ function showRoomInfo() {
   if (!roomId) { box.innerHTML = ""; return; }
   const r = roomObj(roomId);
 
-  const date  = document.getElementById("f_date").value;
-  const start = document.getElementById("f_start").value;
-  const end   = document.getElementById("f_end").value;
+  const date  = vnDateToISO(document.getElementById("f_date").value);
+  const start = normalizeTime(document.getElementById("f_start").value);
+  const end   = normalizeTime(document.getElementById("f_end").value);
   const editId = state.meetingId || null;
   const conflicts = findScheduleConflicts({
     id: editId,
@@ -349,9 +620,9 @@ function showRoomInfo() {
 
 /* ── Tóm tắt bên phải ────────────────────────────── */
 function updateSummary() {
-  const date  = document.getElementById("f_date").value;
-  const start = document.getElementById("f_start").value;
-  const end   = document.getElementById("f_end").value;
+  const date  = vnDateToISO(document.getElementById("f_date").value);
+  const start = normalizeTime(document.getElementById("f_start").value);
+  const end   = normalizeTime(document.getElementById("f_end").value);
   const roomId = document.getElementById("f_room").value;
   const host   = document.getElementById("f_host").value;
   const reminder = document.getElementById("f_reminder").value;
@@ -368,9 +639,9 @@ function updateSummary() {
 function checkConflict() {
   const box    = document.getElementById("conflictBox");
   const note   = document.getElementById("availabilityNote");
-  const date   = document.getElementById("f_date").value;
-  const start  = document.getElementById("f_start").value;
-  const end    = document.getElementById("f_end").value;
+  const date   = vnDateToISO(document.getElementById("f_date").value);
+  const start  = normalizeTime(document.getElementById("f_start").value);
+  const end    = normalizeTime(document.getElementById("f_end").value);
   const roomId = document.getElementById("f_room").value;
   const host   = document.getElementById("f_host")?.value || CURRENT_USER.name;
 
@@ -552,9 +823,12 @@ function submitForm(editId) {
   /* Lấy giá trị */
   const title    = document.getElementById("f_title").value.trim();
   const desc     = document.getElementById("f_desc").value.trim();
-  const date     = document.getElementById("f_date").value;
-  const start    = document.getElementById("f_start").value;
-  const end      = document.getElementById("f_end").value;
+  const rawDate  = document.getElementById("f_date").value.trim();
+  const date     = vnDateToISO(rawDate);
+  const rawStart = document.getElementById("f_start").value.trim();
+  const rawEnd   = document.getElementById("f_end").value.trim();
+  const start    = normalizeTime(rawStart);
+  const end      = normalizeTime(rawEnd);
   const roomId   = document.getElementById("f_room").value;
   const link     = document.getElementById("f_link").value.trim();
   const host     = document.getElementById("f_host").value;
@@ -571,10 +845,10 @@ function submitForm(editId) {
   ["field_title","field_date","field_start","field_end","field_room"].forEach(clear);
 
   if (!title)                                fail("field_title");
-  if (!date)                                 fail("field_date");
+  if (!rawDate || !date)                     fail("field_date");
   else if (date < todayStr(0))               fail("field_date");
-  if (!start)                                fail("field_start");
-  if (!end)                                  fail("field_end");
+  if (!rawStart || !start)                   fail("field_start");
+  if (!rawEnd || !end)                       fail("field_end");
   else if (start && end && end <= start)     fail("field_end");
   if (!roomId)                               fail("field_room");
 
