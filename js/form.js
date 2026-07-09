@@ -228,26 +228,15 @@ function viewForm(editId) {
 
         <!-- CỘT TRÁI -->
         <div>
-
-          <!-- Người tổ chức -->
+            <!-- Người tổ chức -->
           <div class="panel">
             <h3>👤 Người tổ chức &amp; Chủ trì</h3>
             <div class="field-row">
               <div class="field">
                 <label>Người tổ chức</label>
                 <div class="organizer" style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;background:#f9fafb;">
-                  
-                  <input
-                    id="f_organizer"
-                    type="text"
-                    value="${escapeHtml(CURRENT_USER.name)}"
-                    style="
-                      flex:1;
-                      border:none;
-                      outline:none;
-                      background:transparent;
-                      font-size:15px;
-          ">  
+                  <div class="av">${initials(CURRENT_USER.name)}</div>
+                  ${escapeHtml(CURRENT_USER.name)} (Tôi)
                 </div>
               </div>
               <div class="field">
@@ -260,6 +249,7 @@ function viewForm(editId) {
             </div>
           </div>
 
+          
           <!-- Thông tin cuộc họp -->
           <div class="panel">
             <h3>ℹ️ Thông tin cuộc họp</h3>
