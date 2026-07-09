@@ -262,12 +262,19 @@ function isPersonBusyInMeeting(m, name) {
 function findScheduleConflicts({ id = null, date, startTime, endTime, roomId, participants = [], organizer = CURRENT_USER.name, host = CURRENT_USER.name }) {
   if (!date || !startTime || !endTime) return { roomConflict: null, busyPeople: [] };
 
-  // Chỉ kiểm tra người bận đối với Chủ trì và Thành viên tham gia.
-  // Người tạo cuộc họp chỉ là người thao tác tạo lịch, không mặc định là người tham gia,
-  // nên không bị báo trùng lịch nếu đã chọn phòng khác và chủ trì khác.
+  /*
+    Logic nghiệp vụ:
+    - Người tổ chức chỉ là người tạo/lập lịch cuộc họp, KHÔNG tự động được xem là người tham gia.
+    - Vì vậy không kiểm tra trùng lịch của organizer.
+    - Chỉ kiểm tra trùng lịch cho Chủ trì và các Thành viên tham gia đã chọn.
+    => Tránh lỗi Nguyễn Văn A bị báo bận khi A chỉ là Người tổ chức, còn Chủ trì là người khác.
+  */
   const names = new Set();
   if (host) names.add(host);
-  participants.forEach((p) => names.add(typeof p === "string" ? p : p.name));
+  participants.forEach((p) => {
+    const name = typeof p === "string" ? p : p.name;
+    if (name) names.add(name);
+  });
 
   const overlaps = getMeetings().filter((m) =>
     m.id !== id &&
